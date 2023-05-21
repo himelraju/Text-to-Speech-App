@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Text-to-Speech App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f2f2f2;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    h1 {
+      margin-top: 0;
+      margin-bottom: 20px;
+      color: #007bff;
+      text-align: center;
+    }
+
+    textarea {
+      width: 100%;
+      height: 200px;
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 8px;
+      resize: none;
+      font-size: 14px;
+    }
+
+    select, input[type="range"] {
+      width: 100%;
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 8px;
+      font-size: 14px;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .button {
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+
+    .button:hover {
+      background-color: #0056b3;
+    }
+
+    .icon {
+      margin-right: 5px;
+    }
+
+    .highlight {
+      background-color: yellow;
+    }
+
+    .save-load {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .save-load input[type="text"] {
+      width: 70%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .save-load .button {
+      width: 25%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Text-to-Speech App</h1>
+    <textarea id="text-to-speech" placeholder="Enter text..."></textarea>
+    <div class="controls">
+      <select id="language-select"></select>
+      <select id="voice-select"></select>
+      <select id="speech-select">
+        <option value="normal">Normal Text</option>
+        <option value="ssml">SSML</option>
+      </select>
+    </div>
+    <div class="controls">
+      <button id="speak-button" class="button"><i class="fas fa-play icon"></i>Speak</button>
+      <button id="pause-button" class="button"><i class="fas fa-pause icon"></i>Pause</button>
+      <button id="resume-button" class="button"><i class="fas fa-play icon"></i>Resume</button>
+      <button id="stop-button" class="button"><i class="fas fa-stop icon"></i>Stop</button>
+    </div>
+    <div class="controls">
+      <label for="rate-input">Rate:</label>
+      <input type="range" id="rate-input" min="0.5" max="2" step="0.1" value="1" />
+      <label for="volume-input">Volume:</label>
+      <input type="range" id="volume-input" min="0" max="1" step="0.1" value="1" />
+      <label for="pitch-input">Pitch:</label>
+      <input type="range" id="pitch-input" min="0" max="2" step="0.1" value="1" />
+    </div>
+    <div class="save-load">
+      <input type="text" id="save-input" placeholder="Enter name to save settings" />
+      <button id="save-button" class="button"><i class="fas fa-save icon"></i>Save</button>
+      <button id="load-button" class="button"><i class="fas fa-download icon"></i>Load</button>
+    </div>
+  </div>
+
+  <script src="https://kit.fontawesome.com/your-font-awesome-kit.js" crossorigin="anonymous"></script>
+  <script>
+    // Get the necessary elements from the HTML
+    const textarea = document.getElementById('text-to-speech');
+    const languageSelect = document.getElementById('language-select');
+    const voiceSelect = document.getElementById('voice-select');
+    const speechSelect = document.getElementById('speech-select');
+    const speakButton = document.getElementById('speak-button');
+    const pauseButton = document.getElementById('pause-button');
+    const resumeButton = document.getElementById('resume-button');
+    const stopButton = document.getElementById('stop-button');
+    const rateInput = document.getElementById('rate-input');
+    const volumeInput = document.getElementById('volume-input');
+    const pitchInput = document.getElementById('pitch-input');
+    const saveInput = document.getElementById('save-input');
+    const saveButton = document.getElementById('save-button');
+    const loadButton = document.getElementById('load-button');
+    const highlightClass = 'highlight';
+
+    let isSpeaking = false;
+    let speechQueue = [];
+    let currentSentenceIndex = 0;
+
+    function generateOptions() {
+      const voices = speechSynthesis.getVoices();
+      languageSelect.innerHTML = '';
+      voiceSelect.innerHTML = '';
+
+      voices.forEach(voice => {
+        const option = document.createElement('option');
+        option.value = voice.lang;
+        option.textContent = voice.name;
+        voiceSelect.appendChild(option);
+
+        if (!languageSelect.querySelector(`option[value="${voice.lang}"]`)) {
+          const languageOption = document.createElement('option');
+          languageOption.value = voice.lang;
+          languageOption.textContent = voice.lang;
+          languageSelect.appendChild(languageOption);
+        }
+      });
+    }
+
+    function setSpeechOption() {
+      const selectedVoice = voiceSelect.value;
+      speechSelect.disabled = selectedVoice.startsWith('Microsoft') || selectedVoice.startsWith('Google');
+    }
+
+    function queueSentences() {
+      const text = textarea.value.trim();
+      const sentences = text.split(/[.!?]+/);
+      let start = 0;
+      speechQueue = [];
+
+      sentences.forEach(sentence => {
+        const trimmedSentence = sentence.trim();
+        if (trimmedSentence !== '') {
+          const end = start + trimmedSentence.length;
+          speechQueue.push({ text: trimmedSentence, start, end });
+          start = end + 1; // Account for the punctuation mark
+        }
+      });
+    }
+
+    function toggleSpeakButton() {
+      if (isSpeaking) {
+        speakButton.innerHTML = '<i class="fas fa-pause icon"></i> Pause';
+      } else {
+        speakButton.innerHTML = '<i class="fas fa-play icon"></i> Speak';
+      }
+    }
+
+    function highlightCurrentSentence() {
+      const currentSentence = speechQueue[currentSentenceIndex];
+      const { start, end } = currentSentence;
+
+      const textBefore = textarea.value.substring(0, start);
+      const textInside = textarea.value.substring(start, end);
+      const textAfter = textarea.value.substring(end);
+
+      textarea.innerHTML = `
+        ${textBefore}<span class="${highlightClass}">${textInside}</span>${textAfter}
+      `;
+    }
+
+    function clearHighlightedSentences() {
+      const highlightedSentences = textarea.querySelectorAll(`span.${highlightClass}`);
+      highlightedSentences.forEach(sentence => {
+        sentence.outerHTML = sentence.innerHTML;
+      });
+    }
+
+    function handleSpeakButtonClick() {
+      if (!isSpeaking) {
+        isSpeaking = true;
+        toggleSpeakButton();
+
+        const selectedVoice = voiceSelect.value;
+        const selectedSpeech = speechSelect.value;
+
+        const speechText = selectedSpeech === 'ssml' ? `<speak>${textarea.value}</speak>` : textarea.value;
+
+        const utterance = new SpeechSynthesisUtterance();
+        utterance.text = speechText;
+        utterance.voice = speechSynthesis.getVoices().find(voice => voice.lang === selectedVoice);
+        utterance.rate = rateInput.value;
+        utterance.volume = volumeInput.value;
+        utterance.pitch = pitchInput.value;
+
+        utterance.addEventListener('start', () => {
+          currentSentenceIndex = 0;
+          queueSentences();
+          highlightCurrentSentence();
+        });
+
+        utterance.addEventListener('boundary', event => {
+          const { charIndex } = event;
+          currentSentenceIndex = speechQueue.findIndex(sentence => sentence.end > charIndex);
+          clearHighlightedSentences();
+          highlightCurrentSentence();
+        });
+
+        utterance.addEventListener('end', () => {
+          isSpeaking = false;
+          toggleSpeakButton();
+          clearHighlightedSentences();
+        });
+
+        speechSynthesis.speak(utterance);
+      } else {
+        isSpeaking = false;
+        toggleSpeakButton();
+        speechSynthesis.pause();
+      }
+    }
+
+    function handleResumeButtonClick() {
+      isSpeaking = true;
+      toggleSpeakButton();
+      speechSynthesis.resume();
+    }
+
+    function handleStopButtonClick() {
+      isSpeaking = false;
+      toggleSpeakButton();
+      speechSynthesis.cancel();
+      clearHighlightedSentences();
+    }
+
+    function handleRateChange() {
+      const rate = rateInput.value;
+      speechSynthesis.rate = rate;
+    }
+
+    function handleVolumeChange() {
+      const volume = volumeInput.value;
+      speechSynthesis.volume = volume;
+    }
+
+    function handlePitchChange() {
+      const pitch = pitchInput.value;
+      speechSynthesis.pitch = pitch;
+    }
+
+    function handleTextareaInput() {
+      queueSentences();
+      clearHighlightedSentences();
+    }
+
+    function handleVoicesChanged() {
+      generateOptions();
+      setSpeechOption();
+    }
+
+    function handleSaveButtonClick() {
+      const settings = {
+        voice: voiceSelect.value,
+        speech: speechSelect.value,
+        rate: rateInput.value,
+        volume: volumeInput.value,
+        pitch: pitchInput.value,
+        text: textarea.value
+      };
+      const saveName = saveInput.value;
+
+      localStorage.setItem(saveName, JSON.stringify(settings));
+      alert('Settings saved successfully!');
+    }
+
+    function handleLoadButtonClick() {
+      const loadName = saveInput.value;
+      const settings = JSON.parse(localStorage.getItem(loadName));
+
+      if (settings) {
+        voiceSelect.value = settings.voice;
+        speechSelect.value = settings.speech;
+        rateInput.value = settings.rate;
+        volumeInput.value = settings.volume;
+        pitchInput.value = settings.pitch;
+        textarea.value = settings.text;
+      } else {
+        alert('No saved settings found with the given name.');
+      }
+    }
+
+    // Attach event listeners
+    speakButton.addEventListener('click', handleSpeakButtonClick);
+    resumeButton.addEventListener('click', handleResumeButtonClick);
+    stopButton.addEventListener('click', handleStopButtonClick);
+    rateInput.addEventListener('input', handleRateChange);
+    volumeInput.addEventListener('input', handleVolumeChange);
+    pitchInput.addEventListener('input', handlePitchChange);
+    textarea.addEventListener('input', handleTextareaInput);
+    saveButton.addEventListener('click', handleSaveButtonClick);
+    loadButton.addEventListener('click', handleLoadButtonClick);
+
+    // Wait for the voices to be loaded before generating options and setting speech option
+    speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged);
+  </script>
+</body>
+</html>
